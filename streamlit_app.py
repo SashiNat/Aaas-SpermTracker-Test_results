@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import cv2
 import tempfile
 import os
 import zipfile
@@ -8,9 +7,36 @@ from io import BytesIO
 import base64
 from pathlib import Path
 import time
-import plotly.express as px
-import plotly.graph_objects as go
-from sperm_analyzer import SpermMotilityAnalyzer
+
+# Handle Plotly import with error handling
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    st.warning("⚠️ Plotly not installed - charts will be disabled")
+    PLOTLY_AVAILABLE = False
+
+# Handle OpenCV import with error handling
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError as e:
+    st.error(f"❌ OpenCV import failed: {str(e)}")
+    st.error("Please install OpenCV properly. See troubleshooting guide below.")
+    CV2_AVAILABLE = False
+
+# Only import analyzer if OpenCV is available
+if CV2_AVAILABLE:
+    try:
+        from SpermTracker import SpermMotilityAnalyzer
+        ANALYZER_AVAILABLE = True
+    except ImportError as e:
+        st.error(f"❌ Sperm analyzer import failed: {str(e)}")
+        st.info("Make sure 'SpermTracker.py' is in the same directory as this Streamlit app")
+        ANALYZER_AVAILABLE = False
+else:
+    ANALYZER_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -79,6 +105,10 @@ def create_download_zip(output_dir):
 
 def display_video_info(video_path):
     """Display video information"""
+    if not CV2_AVAILABLE:
+        st.error("OpenCV not available - cannot display video info")
+        return
+        
     cap = cv2.VideoCapture(video_path)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -110,7 +140,7 @@ def create_results_dashboard(df):
     if total_detections > 0:
         motile_percentage = (total_fast + total_slow) / total_detections * 100
         
-        # WHO Classification
+        # Classification
         if motile_percentage >= 40:
             classification = "Normal Motility"
             color = "green"
@@ -138,39 +168,71 @@ def create_results_dashboard(df):
         # Classification alert
         st.markdown(f"""
         <div class="{'success-box' if color == 'green' else 'info-box'}">
-            <strong>WHO Classification:</strong> {classification} ({motile_percentage:.1f}% motile)
+            <strong>Motility Classification:</strong> {classification} ({motile_percentage:.1f}% motile)
         </div>
         """, unsafe_allow_html=True)
         
-        # Create interactive plots
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Pie chart of movement distribution
-            fig_pie = px.pie(
-                values=[total_fast, total_slow, total_immotile],
-                names=['Fast Moving', 'Slow Moving', 'Immotile'],
-                title="Movement Distribution",
-                color_discrete_map={
-                    'Fast Moving': '#00ff00',
-                    'Slow Moving': '#ffff00', 
-                    'Immotile': '#ff0000'
-                }
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-        
-        with col2:
-            # Time series plot
-            fig_time = go.Figure()
-            fig_time.add_trace(go.Scatter(x=df['Frame #'], y=df['Fast'], name='Fast', line=dict(color='green')))
-            fig_time.add_trace(go.Scatter(x=df['Frame #'], y=df['Slow'], name='Slow', line=dict(color='orange')))
-            fig_time.add_trace(go.Scatter(x=df['Frame #'], y=df['Immotile'], name='Immotile', line=dict(color='red')))
-            fig_time.update_layout(title="Sperm Count Over Time", xaxis_title="Frame Number", yaxis_title="Count")
-            st.plotly_chart(fig_time, use_container_width=True)
+        # Create interactive plots if Plotly is available
+        if PLOTLY_AVAILABLE:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Pie chart of movement distribution
+                fig_pie = px.pie(
+                    values=[total_fast, total_slow, total_immotile],
+                    names=['Fast Moving', 'Slow Moving', 'Immotile'],
+                    title="Movement Distribution",
+                    color_discrete_map={
+                        'Fast Moving': '#00ff00',
+                        'Slow Moving': '#ffff00', 
+                        'Immotile': '#ff0000'
+                    }
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+            
+            with col2:
+                # Time series plot
+                fig_time = go.Figure()
+                fig_time.add_trace(go.Scatter(x=df['Frame #'], y=df['Fast'], name='Fast', line=dict(color='green')))
+                fig_time.add_trace(go.Scatter(x=df['Frame #'], y=df['Slow'], name='Slow', line=dict(color='orange')))
+                fig_time.add_trace(go.Scatter(x=df['Frame #'], y=df['Immotile'], name='Immotile', line=dict(color='red')))
+                fig_time.update_layout(title="Sperm Count Over Time", xaxis_title="Frame Number", yaxis_title="Count")
+                st.plotly_chart(fig_time, use_container_width=True)
+        else:
+            st.info("📊 Install Plotly to see interactive charts: `pip install plotly`")
 
 def main():
     # Header
     st.markdown('<h1 class="main-header">🔬 Sperm Motility Analysis System</h1>', unsafe_allow_html=True)
+    
+    # Check if system is ready
+    if not CV2_AVAILABLE or not ANALYZER_AVAILABLE:
+        st.error("❌ System not ready - missing dependencies")
+        
+        st.markdown("""
+        ## 🔧 Troubleshooting Installation
+        
+        ### **OpenCV Installation:**
+        ```bash
+        conda activate sperm
+        pip uninstall opencv-python
+        conda install -c conda-forge opencv
+        ```
+        
+        ### **Alternative OpenCV Installation:**
+        ```bash
+        pip uninstall opencv-python opencv-contrib-python
+        pip install opencv-python-headless==4.8.0.74
+        ```
+        
+        ### **Plotly Installation (Optional):**
+        ```bash
+        pip install plotly
+        ```
+        
+        **After installation, restart your terminal and run:** `streamlit run streamlit_app.py`
+        """)
+        return
     
     # Sidebar
     with st.sidebar:
@@ -206,9 +268,9 @@ def main():
         - 🔴 Immotile
         
         **Outputs:**
-        - CSV data report
-        - Trajectory videos (2 types)
-        - WHO-standard analysis
+        - 📄 CSV data report
+        - 🎥 Trajectory videos (2 types)
+        - 📊 Motility analysis
         """)
     
     # Main content area
@@ -410,66 +472,29 @@ def main():
                                 )
     
     else:
-        # Welcome screen
+        # Welcome screen - Simple version
         st.markdown("""
-        ## 🎯 Welcome to the Sperm Motility Analysis System
+        ## 🚀 Getting Started
         
-        This advanced computer vision system analyzes sperm motility in microscopy videos using:
+        1. **Upload your sperm motility video** (MP4 format recommended)
+        2. **Configure analysis settings** in the sidebar (optional)
+        3. **Click "Start Analysis"** to begin processing
+        4. **Download results** and review the analysis dashboard
         
-        ### 🔬 **Advanced Detection**
-        - **Multi-pattern recognition** for different sperm morphologies
-        - **Adaptive thresholding** for optimal detection
-        - **Robust tracking** with Hungarian algorithm
+        ## 📊 Expected Output Results
         
-        ### 📊 **Clinical Analysis** 
-        - **WHO-standard reporting** for clinical compatibility
-        - **Adaptive classification** based on video characteristics
-        - **Frame-by-frame analysis** for detailed insights
+        **CSV Report:**
+        - Frame-by-frame sperm counts (Frame# | Fast | Slow | Immotile)
         
-        ### 🎥 **Comprehensive Outputs**
-        - **CSV data reports** for statistical analysis
-        - **Trajectory videos** (dots and bounding boxes)
-        - **Interactive dashboards** for visual analysis
+        **Trajectory Videos:**
+        - Dots with trajectories video (colored circles showing movement paths)
+        - Bounding boxes video (detection rectangles with movement trails)
         
-        ### 🚀 **Getting Started**
-        1. Upload your sperm motility video (MP4 format recommended)
-        2. Configure analysis settings in the sidebar
-        3. Click "Start Analysis" to begin processing
-        4. Download results and review interactive dashboard
-        
-        ---
-        
-        **Supported formats:** MP4, AVI, MOV  
-        **Optimal resolution:** 640×480 or higher  
-        **Frame rate:** 25-50 FPS recommended
+        **Analysis Dashboard:**
+        - Movement distribution charts
+        - Motility classification  
+        - Interactive data visualization
         """)
-        
-        # Feature highlights
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("""
-            <div class="metric-card">
-                <h3>🎯 Detection Accuracy</h3>
-                <p><strong>>90%</strong> accuracy for clearly visible sperm with multi-pattern recognition</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div class="metric-card">
-                <h3>⚡ Processing Speed</h3>
-                <p><strong>~50 FPS</strong> analysis speed on standard hardware</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown("""
-            <div class="metric-card">
-                <h3>🏥 Clinical Standard</h3>
-                <p><strong>WHO-compatible</strong> motility analysis and reporting</p>
-            </div>
-            """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     # Initialize session state

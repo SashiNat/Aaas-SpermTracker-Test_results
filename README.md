@@ -212,3 +212,37 @@ Frame #,Fast,Slow,Immotile
 - 📦 **Detection rectangles** showing original detections
 - 📈 **Same trajectory features** as dots version
 - 🔍 **Detailed detection** visualization
+
+##  Web Interface (Bonus Feature)
+
+### **Streamlit App**
+
+A user-friendly web interface for easy sperm motility analysis without command-line usage.
+
+#### **Requirements and usage:**
+```bash
+# Additional packages for web interface
+pip install streamlit plotly
+
+# Run the web application
+streamlit run streamlit_app.py
+
+# Access in browser at: http://localhost:8501
+```
+
+#### **File Structure:**
+```
+project/
+├── streamlit_app.py    # Web interface
+├── SpermTracker.py     # Core analysis engine
+└── requirements.txt    # Dependencies
+```
+
+#### **Getting Started:**
+1. **Start the app**: `streamlit run streamlit_app.py`
+2. **Upload video**: Use the file uploader in sidebar
+3. **Configure settings**: Enable debug mode if needed
+4. **Run analysis**: Click "Start Analysis" button
+5. **Download results**: Get CSV and trajectory videos
+
+
